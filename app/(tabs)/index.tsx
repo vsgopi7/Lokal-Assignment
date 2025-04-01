@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, Pressable } from "react-native";
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, Pressable, Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -61,12 +61,36 @@ const JobListScreen = () => {
 
   const renderItem = ({ item }: { item: Job }) => {
     if (!item.id) return null;
+    const scaleAnim = new Animated.Value(1);
+
+    const handlePressIn = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 0.97,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 3,
+        useNativeDriver: true,
+      }).start();
+    };
+
     return (
-      <Pressable style={styles.card} onPress={() => router.push(`/job/${item.id}`)}>
-        <Text style={styles.title}>{item.title || "No Title Available"}</Text>
-        <Text style={styles.detail}>📍 {item.primary_details?.Place || "Location not provided"}</Text>
-        <Text style={styles.salary}>💰 {item.primary_details?.Salary || "Salary not specified"}</Text>
-        <Text style={styles.contact}>📞 {item.custom_link || "No contact available"}</Text>
+      <Pressable
+        onPress={() => router.push(`/job/${item.id}`)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        android_ripple={{ color: "#007bff30" }}
+      >
+        <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>  
+          <Text style={styles.title}>{item.title || "No Title Available"}</Text>
+          <Text style={styles.detail}>📍 {item.primary_details?.Place || "Location not provided"}</Text>
+          <Text style={styles.salary}>💰 {item.primary_details?.Salary || "Salary not specified"}</Text>
+          <Text style={styles.contact}>📞 {item.custom_link || "No contact available"}</Text>
+        </Animated.View>
       </Pressable>
     );
   };
