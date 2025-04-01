@@ -1,31 +1,140 @@
-import { StyleSheet } from 'react-native';
+import React, { useEffect, useState, useRef } from "react";
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, Pressable } from "react-native";
+import { useRouter } from "expo-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import EditScreenInfo from '@/components/EditScreenInfo';
-import { Text, View } from '@/components/Themed';
+const queryClient = new QueryClient();
 
-export default function TabOneScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Tab One</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-      <EditScreenInfo path="app/(tabs)/index.tsx" />
-    </View>
-  );
+interface Job {
+  id: string;
+  title: string;
+  primary_details?: {
+    Place?: string;
+    Salary?: string;
+  };
+  custom_link?: string;
 }
+
+const JobListScreen = () => {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const isFetching = useRef(false);
+  const router = useRouter();
+  const fetchedJobIds = useRef<Set<string>>(new Set());
+
+  const fetchJobs = async (pageNumber: number) => {
+    if (isFetching.current) return;
+    isFetching.current = true;
+    try {
+      const response = await fetch(`https://testapi.getlokalapp.com/common/jobs?page=${pageNumber}`);
+      const data = await response.json();
+      if (data.results) {
+        const newJobs = data.results.filter((job: Job) => !fetchedJobIds.current.has(job.id));
+        if (newJobs.length === 0) {
+          setIsFetchingMore(false);
+          return;
+        }
+        setJobs((prevJobs) => [...prevJobs, ...newJobs]);
+        newJobs.forEach((job: Job) => fetchedJobIds.current.add(job.id));
+      }
+    } catch (error) {
+      console.error("Error fetching jobs:", error);
+    } finally {
+      setLoading(false);
+      setIsFetchingMore(false);
+      isFetching.current = false;
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs(page);
+  }, [page]);
+
+  const loadMoreJobs = () => {
+    if (!isFetchingMore && jobs.length < 10) {
+      setIsFetchingMore(true);
+      setPage((prevPage) => prevPage + 1);
+    }
+  };
+
+  const renderItem = ({ item }: { item: Job }) => {
+    if (!item.id) return null;
+    return (
+      <Pressable style={styles.card} onPress={() => router.push(`/job/${item.id}`)}>
+        <Text style={styles.title}>{item.title || "No Title Available"}</Text>
+        <Text style={styles.detail}>📍 {item.primary_details?.Place || "Location not provided"}</Text>
+        <Text style={styles.salary}>💰 {item.primary_details?.Salary || "Salary not specified"}</Text>
+        <Text style={styles.contact}>📞 {item.custom_link || "No contact available"}</Text>
+      </Pressable>
+    );
+  };
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <View style={styles.container}>
+        {loading ? (
+          <ActivityIndicator size="large" color="#007bff" />
+        ) : (
+          <FlatList
+            data={jobs}
+            keyExtractor={(item, index) => item.id || index.toString()}
+            renderItem={renderItem}
+            onEndReached={loadMoreJobs}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={isFetchingMore ? <ActivityIndicator size="small" color="#007bff" /> : null}
+          />
+        )}
+      </View>
+    </QueryClientProvider>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: "#eef2f3",
+  },
+  card: {
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+    borderLeftWidth: 5,
+    borderLeftColor: "#007bff",
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#0056b3",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '80%',
+  detail: {
+    fontSize: 16,
+    color: "#555",
+    marginTop: 6,
+  },
+  salary: {
+    fontSize: 16,
+    color: "#28a745",
+    fontWeight: "bold",
+    marginTop: 8,
+  },
+  contact: {
+    fontSize: 14,
+    color: "#888",
+    marginTop: 10,
+    fontStyle: "italic",
   },
 });
+
+export default JobListScreen;
