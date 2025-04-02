@@ -1,18 +1,23 @@
+
 import React, { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useLocalSearchParams } from "expo-router";
-import { Linking, View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Linking,View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
+import { db } from "../../FirebaseConfig";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 
 const queryClient = new QueryClient();
 
 export default function JobDetailsScreen() {
-  const { id } = useLocalSearchParams(); 
+  const { id } = useLocalSearchParams();
   const [jobDetails, setJobDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isBookmarked, setIsBookmarked] = useState(false);
 
   useEffect(() => {
+    if (!id) return;
+
     fetch('https://testapi.getlokalapp.com/common/jobs?page=1')
       .then(response => response.json())
       .then(data => {
@@ -20,6 +25,7 @@ export default function JobDetailsScreen() {
           const job = data.results.find(job => job.id == id);
           if (job) {
             setJobDetails(job);
+            checkIfBookmarked(job.id);
           } else {
             setError("Job not found");
           }
@@ -31,19 +37,49 @@ export default function JobDetailsScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const checkIfBookmarked = async (jobId) => {
+    try {
+      const q = query(collection(db, "bookmarkedJobs"), where("id", "==", jobId));
+      const querySnapshot = await getDocs(q);
+      setIsBookmarked(!querySnapshot.empty);
+    } catch (error) {
+      console.error("Error checking bookmark status:", error);
+    }
+  };
+
   const handleBookmark = async () => {
     try {
-      const existingBookmarks = await AsyncStorage.getItem('bookmarkedJobs');
-      let bookmarks = existingBookmarks ? JSON.parse(existingBookmarks) : [];
-
-      if (!bookmarks.some(job => job.id === jobDetails.id)) {
-        bookmarks.push(jobDetails);
-        await AsyncStorage.setItem('bookmarkedJobs', JSON.stringify(bookmarks));
-        Alert.alert("Success", "Job added to bookmarks!");
-      } else {
-        Alert.alert("Info", "Job already bookmarked.");
+      if (!jobDetails || !jobDetails.id) {
+        Alert.alert("Error", "Invalid job details.");
+        return;
       }
+
+      const q = query(collection(db, "bookmarkedJobs"), where("id", "==", jobDetails.id));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        Alert.alert("Info", "Job already bookmarked.");
+        setIsBookmarked(true);
+        return;
+      }
+
+      const jobData = {
+        id: jobDetails.id,
+        title: jobDetails.title || "Untitled",
+        company: jobDetails.company_name || "Unknown Company",
+        location: jobDetails.primary_details?.Place || "Unknown Location",
+        salary: jobDetails.primary_details?.Salary || "N/A",
+      };
+
+      const docRef = await addDoc(collection(db, "bookmarkedJobs"), jobData);
+      console.log("Bookmark added with ID:", docRef.id);
+      setBookmarkedJobs((prev) => [...prev, { id: docRef.id, ...jobData }]);
+      Alert.alert("Success", "Job added to bookmarks!");
+
+      setIsBookmarked(true);
+      
+      
     } catch (error) {
+      console.error("Firestore Error:", error);
       Alert.alert("Error", "Could not save the job.");
     }
   };
@@ -103,8 +139,11 @@ export default function JobDetailsScreen() {
               </>
             )}
 
-            <TouchableOpacity style={styles.bookmarkButton} onPress={handleBookmark}>
-              <Text style={styles.bookmarkButtonText}>Add to Bookmarks</Text>
+            <TouchableOpacity 
+              style={[styles.bookmarkButton, isBookmarked ? styles.disabledButton : {}]} 
+              onPress={handleBookmark} 
+              disabled={isBookmarked}>
+              <Text style={styles.bookmarkButtonText}>{isBookmarked ? "Bookmarked" : "Add to Bookmarks"}</Text>
             </TouchableOpacity>
           </>
         )}
